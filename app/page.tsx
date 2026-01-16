@@ -165,7 +165,6 @@ export default function DermaVisionApp() {
   }
 
   // --- 2. DERMAVISION DOCTOR (Gemini API) ---
-  // --- 2. DERMAVISION DOCTOR (Gemini API) ---
   const generateGeminiReport = async () => {
     if (!capturedImage) return;
     setIsGeminiLoading(true);
@@ -224,16 +223,31 @@ export default function DermaVisionApp() {
   }
 
   const calculateRiskScore = () => {
-    const { ai_malignant_prob, tier1, symptoms } = scanSession
-    let finalScore = ai_malignant_prob;
-    
-    if (tier1.inflammatory > 0.5 || tier1.fungal > 0.5) finalScore += 0.15;
-    if (symptoms.includes("bleed_check")) finalScore += 0.20;
-    if (symptoms.includes("growth_check")) finalScore += 0.15;
-    if (symptoms.includes("itch_check")) finalScore += 0.05;
+    const { tier1, symptoms } = scanSession;
 
-    finalScore = Math.min(0.99, finalScore);
-    if (symptoms.length > 0 && finalScore < 0.2) finalScore = 0.20;
+    // 1. BASE SCORE: Calculated from Visual Analysis
+    // We weight different categories differently:
+    // - Malignant: 1.0 (Critical threat)
+    // - Inflammatory: 0.4 (Requires attention, likely prescription needed)
+    // - Fungal: 0.3 (Requires treatment, usually not urgent)
+    let baseScore = 
+      (tier1.cancer * 1.0) + 
+      (tier1.inflammatory * 0.4) + 
+      (tier1.fungal * 0.3);
+
+    // 2. SYMPTOM BOOSTERS
+    // Adding clinical context to the visual score
+    if (symptoms.includes("bleed_check")) baseScore += 0.20;  // High concern
+    if (symptoms.includes("growth_check")) baseScore += 0.15; // Moderate concern
+    if (symptoms.includes("itch_check")) baseScore += 0.05;   // Low concern
+
+    // 3. CAP AND FLOOR
+    let finalScore = Math.min(0.99, baseScore); // Cap at 99%
+    
+    // If user reported symptoms but visual score is low, ensure at least 'Moderate' awareness
+    if (symptoms.length > 0 && finalScore < 0.2) {
+      finalScore = 0.20;
+    }
 
     setScanSession((prev) => ({ ...prev, final_risk_score: finalScore }));
     navigateToScreen("results");
